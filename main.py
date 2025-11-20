@@ -31,47 +31,57 @@ random.seed(SEED)
 
 print("Libraries imported successfully.")
 
-# --- Cell 2: Data Loading and Splitting ---
-# Load data and split into training and test sets BEFORE scaling
-# to avoid Data Leakage.
+# --- Cell 2: Data Loading and Splitting (Train / Valid / Test) ---
+# Modification: Split data into 3 sets:
+# 1. Test (20%) - final verification
+# 2. Validation (20%) - intermediate check
+# 3. Train (60%) - training
 
 df = pd.read_csv('creditcard.csv')
 
 X = df.drop('Class', axis=1)
 y = df['Class']
 
-# 80% training, 20% test split with stratification (maintaining class proportions)
-X_train, X_test, y_train, y_test = train_test_split(
+# Step 1: Separate Test set (20%) and Temporary set (80%)
+X_temp, X_test, y_temp, y_test = train_test_split(
     X, y, test_size=0.2, random_state=SEED, stratify=y
 )
 
-print("Data split complete.")
-print(f"Class distribution in training set: {Counter(y_train)}")
+# Step 2: Split Temporary set into Training (75% of temp) and Validation (25% of temp)
+# Mathematically: 0.25 * 0.8 = 0.2 (which is 20% of the total)
+X_train, X_val, y_train, y_val = train_test_split(
+    X_temp, y_temp, test_size=0.25, random_state=SEED, stratify=y_temp
+)
+
+print("Data split complete (Train / Valid / Test).")
+print(f"Number of Train samples: {len(y_train)} ({Counter(y_train)})")
+print(f"Number of Valid samples: {len(y_val)} ({Counter(y_val)})")
+print(f"Number of Test samples:  {len(y_test)} ({Counter(y_test)})")
 print("-" * 50)
 
 # --- Cell 3: Preprocessing (Scaling) ---
-# Use RobustScaler, which is resistant to outliers.
-# Fit the scaler ONLY on training data.
+# Fit scaler ONLY on Train set (not Valid, not Test)
 
-# Scale 'Amount' column
 scaler_amount = RobustScaler().fit(X_train[['Amount']])
 X_train['scaled_amount'] = scaler_amount.transform(X_train[['Amount']])
+X_val['scaled_amount'] = scaler_amount.transform(X_val[['Amount']])
 X_test['scaled_amount'] = scaler_amount.transform(X_test[['Amount']])
 
-# Scale 'Time' column
 scaler_time = RobustScaler().fit(X_train[['Time']])
 X_train['scaled_time'] = scaler_time.transform(X_train[['Time']])
+X_val['scaled_time'] = scaler_time.transform(X_val[['Time']])
 X_test['scaled_time'] = scaler_time.transform(X_test[['Time']])
 
-# Drop original, unscaled columns
+# Drop original columns
 X_train = X_train.drop(['Time', 'Amount'], axis=1)
+X_val = X_val.drop(['Time', 'Amount'], axis=1)
 X_test = X_test.drop(['Time', 'Amount'], axis=1)
 
 print("Data scaling complete.")
 print("-" * 50)
 
-# --- Cell 4: Model Configuration and Hyperparameters ---
-# Calculate minority class weight (scale_pos_weight) to balance class impact.
+# --- Cell 4: Model Configuration ---
+# Calculate scale_pos_weight based on the new, smaller Train set
 
 neg_count = Counter(y_train)[0]
 pos_count = Counter(y_train)[1]
@@ -79,7 +89,7 @@ scale_pos_weight_value = neg_count / pos_count
 
 print(f"Calculated scale_pos_weight: {scale_pos_weight_value:.2f}")
 
-# Hyperparameters found during tuning process (Milestone 5)
+# Hyperparameters (unchanged)
 best_params_xgb = {
     'subsample': 0.6,
     'reg_lambda': 1,
@@ -95,16 +105,16 @@ best_params_xgb = {
 print("Optimal hyperparameters loaded.")
 print("-" * 50)
 
-# --- Cell 5: Train Final Model (XGBoost + scale_pos_weight) ---
-# Train our winning model on the full training set.
+# --- Cell 5: Model Training (XGBoost) ---
+# Train on X_train (60% of data)
 
-print("\n--- Starting Final Model Training (XGBoost) ---")
+print("\n--- Starting model training (on Train set) ---")
 final_model = xgb.XGBClassifier(
     objective='binary:logistic',
     random_state=SEED,
     n_jobs=-1,
     eval_metric='logloss',
-    scale_pos_weight=scale_pos_weight_value,  # Key parameter for imbalance
+    scale_pos_weight=scale_pos_weight_value,
     **best_params_xgb
 )
 
@@ -113,26 +123,25 @@ final_model.fit(X_train, y_train)
 print(f"Training complete in {time.time() - start_time:.2f}s")
 print("-" * 50)
 
-# --- Cell 6: Generate Predictions ---
-# Generate probabilities and apply the fixed decision threshold (Threshold = 0.8).
+# --- Cell 6: Generate Predictions (Train, Valid, Test) ---
+print("\n--- Generating predictions for Train, Valid, Test ---")
 
-print("\n--- Generating predictions ---")
-# Get probabilities for class 1 (fraud)
+# Probabilities
 y_prob_train = final_model.predict_proba(X_train)[:, 1]
+y_prob_val = final_model.predict_proba(X_val)[:, 1]  # New
 y_prob_test = final_model.predict_proba(X_test)[:, 1]
 
-# Apply decision threshold that yielded the best cost balance in experiments
-FINAL_THRESHOLD = 0.80
+FINAL_THRESHOLD = 0.6
 print(f"Applied Decision Threshold: {FINAL_THRESHOLD}")
 
+# Decisions (0 or 1)
 y_pred_train = (y_prob_train > FINAL_THRESHOLD).astype(int)
+y_pred_val = (y_prob_val > FINAL_THRESHOLD).astype(int)  # New
 y_pred_test = (y_prob_test > FINAL_THRESHOLD).astype(int)
 print("-" * 50)
 
-# --- Cell 7: Business Context and Metric Functions ---
-# Define business costs and helper functions to calculate all 22 metrics.
+# --- Cell 7: Metric Functions ---
 
-# Cost parameters
 TOTAL_FRAUD_VALUE_EUR = 60000
 TOTAL_FRAUD_TRANSACTIONS = 492
 COST_MULTIPLIER_LOW = 3.27
@@ -141,11 +150,8 @@ AVG_FRAUD_VALUE = TOTAL_FRAUD_VALUE_EUR / TOTAL_FRAUD_TRANSACTIONS
 COST_PER_FN_EUR = AVG_FRAUD_VALUE * COST_MULTIPLIER_LOW
 COST_PER_FN = COST_PER_FN_EUR * EUR_TO_PLN
 
-print(f"\nCost per single False Negative (FN): {COST_PER_FN:.2f} PLN")
-
 
 def calculate_ece_mce(y_true, y_prob, n_bins=10):
-    """Calculates calibration errors: Expected Calibration Error and Max Calibration Error"""
     bin_boundaries = np.linspace(0, 1, n_bins + 1)
     bin_lowers = bin_boundaries[:-1]
     bin_uppers = bin_boundaries[1:]
@@ -165,7 +171,6 @@ def calculate_ece_mce(y_true, y_prob, n_bins=10):
 
 
 def calculate_all_metrics(y_true, y_pred, y_prob):
-    """Calculates a comprehensive set of metrics for the model."""
     metrics = {}
     cm = confusion_matrix(y_true, y_pred)
     tn, fp, fn, tp = cm.ravel()
@@ -196,35 +201,38 @@ def calculate_all_metrics(y_true, y_pred, y_prob):
         metrics['AUC PR'] = 0.0
 
     metrics['Brier Score'] = brier_score_loss(y_true, y_prob)
-    metrics['Expected Cost'] = fn * COST_PER_FN  # Business cost
+    metrics['Expected Cost'] = fn * COST_PER_FN
     metrics['ECE'], metrics['MCE'] = calculate_ece_mce(y_true.to_numpy(), y_prob)
     return metrics
 
 
-# --- Cell 8: Calculate and Display Results ---
-# Calculate metrics for both training and test sets.
+# --- Cell 8: Calculation and Presentation of Results (3 Columns) ---
 
+# Calculate metrics for all three sets
 metrics_train = calculate_all_metrics(y_train, y_pred_train, y_prob_train)
+metrics_val = calculate_all_metrics(y_val, y_pred_val, y_prob_val)  # New
 metrics_test = calculate_all_metrics(y_test, y_pred_test, y_prob_test)
 
 
-# Create summary table
-def create_summary_table(metric_list, train_metrics, test_metrics):
-    data = {'Metric': metric_list, 'Train Set': [], 'Test Set': []}
+def create_summary_table_3cols(metric_list, train, val, test):
+    data = {'Metric': metric_list, 'Train': [], 'Valid': [], 'Test': []}
     for metric in metric_list:
-        val_train = train_metrics.get(metric)
-        val_test = test_metrics.get(metric)
+        v_train = train.get(metric)
+        v_val = val.get(metric)
+        v_test = test.get(metric)
 
-        if metric == 'Expected Cost':
-            data['Train Set'].append(f"{val_train:,.2f} PLN")
-            data['Test Set'].append(f"{val_test:,.2f} PLN")
-        else:
-            data['Train Set'].append(round(val_train, 4) if isinstance(val_train, (int, float)) else val_train)
-            data['Test Set'].append(round(val_test, 4) if isinstance(val_test, (int, float)) else val_test)
+        row_vals = [v_train, v_val, v_test]
+        keys = ['Train', 'Valid', 'Test']
+
+        for i, val_x in enumerate(row_vals):
+            if metric == 'Expected Cost':
+                data[keys[i]].append(f"{val_x:,.2f} PLN")
+            else:
+                data[keys[i]].append(round(val_x, 4) if isinstance(val_x, (int, float)) else val_x)
 
     return pd.DataFrame(data).set_index('Metric')
 
-# UPDATED LISTS TO INCLUDE MISSING METRICS
+
 metrics_table_1 = [
     'TP', 'FP', 'TN', 'FN',
     'Precision', 'Recall (TPR)', 'Specificity (TNR)',
@@ -237,27 +245,29 @@ metrics_table_2 = [
 ]
 
 print(f"\n{'=' * 80}")
-print(f"FINAL MODEL RESULTS (XGBoost + scale_pos_weight)")
+print(f"MODEL RESULTS (Train / Valid / Test)")
 print(f"{'=' * 80}")
 
-print("\n--- Table 1: Classification Metrics (Left Column) ---")
-print(create_summary_table(metrics_table_1, metrics_train, metrics_test))
+print("\n--- Table 1: Classification Metrics ---")
+print(create_summary_table_3cols(metrics_table_1, metrics_train, metrics_val, metrics_test))
 
-print("\n--- Table 2: Quality & Calibration Metrics (Right Column) ---")
-print(create_summary_table(metrics_table_2, metrics_train, metrics_test))
+print("\n--- Table 2: Quality & Calibration Metrics ---")
+print(create_summary_table_3cols(metrics_table_2, metrics_train, metrics_val, metrics_test))
 
-# --- Cell 9: Visualize Confusion Matrix ---
-# Visualize results on the test set.
+# --- Cell 9: Confusion Matrix Visualization (For Valid and Test) ---
+fig, axes = plt.subplots(1, 2, figsize=(16, 6))
 
-plt.figure(figsize=(8, 6))
+# Validation Matrix
+cm_val = confusion_matrix(y_val, y_pred_val)
+sns.heatmap(cm_val, annot=True, fmt='d', cmap='Oranges', ax=axes[0],
+            xticklabels=['Pred 0', 'Pred 1'], yticklabels=['Actual 0', 'Actual 1'])
+axes[0].set_title(f'Confusion Matrix - VALIDATION Set')
+
+# Test Matrix
 cm_test = confusion_matrix(y_test, y_pred_test)
-sns.heatmap(cm_test, annot=True, fmt='d', cmap='Blues',
-            xticklabels=['Predicted Legitimate', 'Predicted Fraud'],
-            yticklabels=['Actual Legitimate', 'Actual Fraud'])
-plt.title(f'Confusion Matrix - Final Model\n(Threshold={FINAL_THRESHOLD})')
-plt.ylabel('True Label')
-plt.xlabel('Predicted Label')
-plt.show()
+sns.heatmap(cm_test, annot=True, fmt='d', cmap='Blues', ax=axes[1],
+            xticklabels=['Pred 0', 'Pred 1'], yticklabels=['Actual 0', 'Actual 1'])
+axes[1].set_title(f'Confusion Matrix - TEST Set')
 
-print("\nSummary:")
-print(f"Model successfully evaluated. Total expected cost on test set: {metrics_test['Expected Cost']:,.2f} PLN.")
+plt.tight_layout()
+plt.show()
