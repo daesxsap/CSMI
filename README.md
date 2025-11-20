@@ -1,4 +1,4 @@
-Credit Card Fraud Detection with XGBoost
+# Credit Card Fraud Detection with XGBoost
 Project Overview
 This project builds a machine learning model to detect fraudulent credit card transactions. It handles extreme class imbalance using XGBoost with a weighted loss function (scale_pos_weight).
 
