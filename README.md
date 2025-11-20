@@ -6,8 +6,8 @@ This project builds a machine learning model to detect fraudulent credit card tr
 ## Key Results
 * **Algorithm:** XGBoost
 * **Technique:** Class Weighting (`scale_pos_weight`)
-* **Business Value:** Optimized **Expected Operational Cost to 26,989 PLN** on the test sample.
-* **Performance:** Recall: ~84% | Precision: ~94%
+* **Business Value:** Optimized **Expected Operational Cost to 25,302 PLN** on the test sample.
+* **Performance:** Recall: ~85% | Precision: ~91% | F1 Score: ~0.88%
 
 ## How to run
 
