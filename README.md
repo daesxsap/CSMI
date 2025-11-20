@@ -15,7 +15,7 @@ This project builds a machine learning model to detect fraudulent credit card tr
    ```bash
    pip install -r requirements.txt
 2. **Download Data:**
-Download creditcard.csv from Kaggle and place it in the root folder.
+Download creditcard.csv from Kaggle and place it in the root folder.  
 https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud/data
 4. **Run the code.**
   
