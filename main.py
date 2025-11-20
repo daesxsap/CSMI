@@ -224,19 +224,27 @@ def create_summary_table(metric_list, train_metrics, test_metrics):
 
     return pd.DataFrame(data).set_index('Metric')
 
+# UPDATED LISTS TO INCLUDE MISSING METRICS
+metrics_table_1 = [
+    'TP', 'FP', 'TN', 'FN',
+    'Precision', 'Recall (TPR)', 'Specificity (TNR)',
+    'FPR', 'FNR', 'NPV', 'Error Rate'
+]
 
-metrics_basic = ['TP', 'FP', 'TN', 'FN', 'Precision', 'Recall (TPR)', 'F1 Score', 'Error Rate']
-metrics_advanced = ['Balanced Acc', 'MCC', 'AUC PR', 'AUC ROC', 'Expected Cost']
+metrics_table_2 = [
+    'Accuracy', 'Balanced Acc', 'MCC', 'F1 Score', 'G-mean',
+    'AUC PR', 'AUC ROC', 'Brier Score', 'ECE', 'MCE', 'Expected Cost'
+]
 
 print(f"\n{'=' * 80}")
 print(f"FINAL MODEL RESULTS (XGBoost + scale_pos_weight)")
 print(f"{'=' * 80}")
 
-print("\n--- Table 1: Basic Metrics ---")
-print(create_summary_table(metrics_basic, metrics_train, metrics_test))
+print("\n--- Table 1: Classification Metrics (Left Column) ---")
+print(create_summary_table(metrics_table_1, metrics_train, metrics_test))
 
-print("\n--- Table 2: Advanced and Business Metrics ---")
-print(create_summary_table(metrics_advanced, metrics_train, metrics_test))
+print("\n--- Table 2: Quality & Calibration Metrics (Right Column) ---")
+print(create_summary_table(metrics_table_2, metrics_train, metrics_test))
 
 # --- Cell 9: Visualize Confusion Matrix ---
 # Visualize results on the test set.
