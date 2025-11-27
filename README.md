@@ -19,4 +19,3 @@ Download creditcard.csv from Kaggle and place it in the root folder.
 https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud/data
 3. **Run the code.**
   
-[📂 Open Analysis Notebook](finalcode.ipynb)
